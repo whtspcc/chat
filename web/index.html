@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+    <head><meta charset="utf-8">
+    </head>
+        <body>
+            <form id="send-msg">
+                <ul id="messages"></ul>
+                <input type="text" id="msgInput">
+                <button id="sendBtn" type="submit" autofocus>-></button>
+            </form>
+
+            <button id="deleteBtn">[x]</button>
+
+            <script>
+                const proto = location.protocol === "https:" ? "wss://" : "ws://";
+                const ws = new WebSocket(proto + location.host + "/ws");
+
+                ws.onmessage = function(e) {
+                    if (e.data === "CMD:show_confirm") {
+                        if (confirm("Удалить весь чат?")) {
+                            ws.send("CMD:confirm_yes")
+                        }
+                    } else {
+                        const li = document.createElement("li");
+                        if (!e.data.startsWith("CMD:")) {
+                            li.textContent = e.data;
+                        }
+                        document.getElementById("messages").appendChild(li);
+                    }
+                    
+                    if (e.data === "CMD:cleared") {
+                            document.getElementById("messages").innerHTML = ""
+                    }
+                };
+
+                document.getElementById("deleteBtn").onclick = function() {
+                    ws.send("CMD:show_confirm")
+                }
+
+                document.getElementById("send-msg").addEventListener("submit", function(e) {
+                    e.preventDefault();
+                    const input = document.getElementById("msgInput");
+                    ws.send(input.value);
+                    input.value = "";
+                });
+            </script>
+        </body>
+</html>
