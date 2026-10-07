@@ -10,10 +10,9 @@ import (
 )
 
 func main() {
-	broadcast := make(chan string)
-	h := hub.NewHub(broadcast)
+	h := hub.NewHub()
 
-	go hub.Run(h)
+	go h.Run()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", handlers.WSHandler(h))

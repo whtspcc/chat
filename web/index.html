@@ -153,6 +153,14 @@
             gap: 8px;
         }
 
+        .system-message {
+            text-align: center;
+            color: #ffffff;
+            font-size: 14px;
+            margin: 18px 0;
+            opacity: 0.9;
+        }
+
         #messages li {
             align-self: flex-start;
             max-width: 82%;
@@ -316,6 +324,13 @@
             }
         }
 
+        function addSystemMessage(text) {
+            const message = document.createElement("div");
+            message.className = "system-message";
+            message.textContent = text;
+            message.appendChild(message);
+        }
+
         document.addEventListener("visibilitychange", function() {
             if (!document.hidden) {
                 unread = 0;
@@ -343,14 +358,28 @@
             };
 
             ws.onmessage = function(e) {
-                if (e.data === "CMD:show_confirm") {
+                if (e.data.startsWith("CMD:user_joined:")) {
+                    const name = e.data.substring("CMD:user_joined:".length);
+                    addSystem(`Пользователь ${name} присоединился`);
+                } 
+                
+                else if (e.data.startsWith("CMD:user_left:")) {
+                    const name = e.data.substring("CMD:user_left:".length);
+                    addSystem(`Пользователь ${name} покинул чат`);
+                }
+
+                else if (e.data === "CMD:show_confirm") {
                     if (confirm("Удалить весь чат?")) {
                         ws.send("CMD:confirm_yes");
                     }
-                } else if (e.data === "CMD:cleared") {
+                } 
+                
+                else if (e.data === "CMD:cleared") {
                     list.innerHTML = "";
                     addSystem("Chat cleared");
-                } else if (!e.data.startsWith("CMD:")) {
+                } 
+                
+                else if (!e.data.startsWith("CMD:")) {
                     addMessage(e.data);
                 }
             };
@@ -387,6 +416,8 @@
                 document.getElementById("loginBtn").click();
             }
         });
+
+
     </script>
 </body>
 </html>

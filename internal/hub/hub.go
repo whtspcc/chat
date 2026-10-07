@@ -3,72 +3,101 @@ package hub
 import (
 	"fmt"
 	"log"
-	"strings"
 	"sync"
 )
 
 type Hub struct {
-	Clients      []chan string
-	ClientsMu    sync.Mutex
-	Broadcast    chan string
-	ConfirmCount int
+	clients       map[*Client]struct{}
+	clientsMu     sync.Mutex
+	broadcast     chan Message
+	confirmations map[*Client]struct{}
 }
 
-func NewHub(br chan string) *Hub {
+func NewHub() *Hub {
 	return &Hub{
-		Broadcast: br,
+		clients:       make(map[*Client]struct{}),
+		confirmations: make(map[*Client]struct{}),
+		broadcast:     make(chan Message),
 	}
 }
 
-func Run(h *Hub) {
-	for msg := range h.Broadcast {
-		log.Println("Run получил:", msg)
-		switch {
-		case msg == "CMD:confirm_yes":
-			h.ClientsMu.Lock()
-			h.ConfirmCount++
-			ready := h.ConfirmCount == len(h.Clients)
-			if ready {
-				h.ConfirmCount = 0
-			}
-			h.ClientsMu.Unlock()
+func (h *Hub) Broadcast(msg Message) {
+	h.broadcast <- msg
+}
 
-			if ready {
-				h.ClientsMu.Lock()
-				for i, v := range h.Clients {
-					select {
-					case v <- "CMD:cleared":
-						log.Print("команда cleared отправлена: чат удаляется")
-					default:
-						log.Printf("клиент %d не успевает, пропускаю\n", i+1)
-					}
-				}
-				h.ClientsMu.Unlock()
-			}
+func (h *Hub) AddClient(name string) *Client {
+	client := &Client{
+		Name: name,
+		Send: make(chan string, 5),
+	}
 
-		case strings.HasPrefix(msg, "CMD:"):
-			h.ClientsMu.Lock()
-			for i, v := range h.Clients {
-				select {
-				case v <- msg:
-					log.Print("пришла команда с префиксом CMD")
-				default:
-					log.Printf("клиент %d не успевает, пропускаю\n", i+1)
-				}
-			}
-			h.ClientsMu.Unlock()
+	h.clientsMu.Lock()
+	h.clients[client] = struct{}{}
+	h.clientsMu.Unlock()
+
+	h.broadcastToAll("CMD:user_joined:" + name)
+
+	return client
+}
+
+func (h *Hub) RemoveClient(client *Client) {
+	h.clientsMu.Lock()
+	defer h.clientsMu.Unlock()
+
+	delete(h.clients, client)
+	delete(h.confirmations, client)
+
+	h.broadcastToAll("CMD:user_left:" + client.Name)
+
+	close(client.Send)
+}
+
+func (h *Hub) Run() {
+	for msg := range h.broadcast {
+		switch msg.Text {
+
+		case "CMD:confirm_yes":
+			h.handleConfirmation(msg.Client)
+
+		case "CMD:show_confirm":
+			h.broadcastToAll("CMD:show_confirm")
 
 		default:
-			h.ClientsMu.Lock()
-			for i, v := range h.Clients {
-				select {
-				case v <- msg:
-					fmt.Println("отправили")
-				default:
-					fmt.Printf("клиент %d не успевает, пропускаю\n", i+1)
-				}
-			}
-			h.ClientsMu.Unlock()
+			h.broadcastToAll(
+				fmt.Sprintf("%s | %s", msg.Client.Name, msg.Text),
+			)
 		}
 	}
+}
+
+func (h *Hub) broadcastToAll(msg string) {
+	h.clientsMu.Lock()
+	defer h.clientsMu.Unlock()
+
+	h.broadcastToAllLocked(msg)
+}
+
+func (h *Hub) broadcastToAllLocked(msg string) {
+	for client := range h.clients {
+		select {
+		case client.Send <- msg:
+		default:
+			log.Printf("клиент %s не успевает получить сообщение", client.Name)
+		}
+	}
+}
+
+func (h *Hub) handleConfirmation(client *Client) {
+	h.clientsMu.Lock()
+	defer h.clientsMu.Unlock()
+
+	h.confirmations[client] = struct{}{}
+
+	if len(h.confirmations) != len(h.clients) {
+		return
+	}
+
+	clear(h.confirmations)
+
+	h.broadcastToAllLocked("CMD:cleared")
 }
