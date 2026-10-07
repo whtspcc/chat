@@ -1,48 +1,392 @@
 <!DOCTYPE html>
-<html>
-    <head><meta charset="utf-8">
-    </head>
-        <body>
-            <form id="send-msg">
-                <ul id="messages"></ul>
-                <input type="text" id="msgInput">
-                <button id="sendBtn" type="submit" autofocus>-></button>
-            </form>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Chat</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --night: #0f1b26;
+            --panel: #172636;
+            --line: #263b4f;
+            --mist: #dce8ef;
+            --dim: #8aa0b2;
+            --lamp: #f4d35e;
+            --danger: #ff8a7a;
+            --ok: #6fd6a0;
+            --font: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", sans-serif;
+        }
 
-            <button id="deleteBtn">[x]</button>
+        * { box-sizing: border-box; }
+        [hidden] { display: none !important; }
 
-            <script>
-                const proto = location.protocol === "https:" ? "wss://" : "ws://";
-                const ws = new WebSocket(proto + location.host + "/ws");
+        html, body { height: 100%; margin: 0; }
 
-                ws.onmessage = function(e) {
-                    if (e.data === "CMD:show_confirm") {
-                        if (confirm("Удалить весь чат?")) {
-                            ws.send("CMD:confirm_yes")
-                        }
-                    } else {
-                        const li = document.createElement("li");
-                        if (!e.data.startsWith("CMD:")) {
-                            li.textContent = e.data;
-                        }
-                        document.getElementById("messages").appendChild(li);
+        body {
+            font-family: var(--font);
+            color: var(--mist);
+            background: var(--night);
+            display: grid;
+            place-items: center;
+        }
+
+        button, input { font: inherit; color: inherit; }
+
+        :focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+
+        /* ---------- login ---------- */
+        #login {
+            width: min(420px, calc(100% - 32px));
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        #login h1 {
+            margin: 0 0 6px;
+            font-size: clamp(2.4rem, 8vw, 3.4rem);
+            font-weight: 800;
+            line-height: 1;
+            letter-spacing: -0.03em;
+        }
+
+        #login p { margin: 0 0 10px; color: var(--dim); line-height: 1.5; }
+
+        #loginInput {
+            width: 100%;
+            padding: 16px 18px;
+            border-radius: 14px;
+            border: 1px solid var(--line);
+            background: var(--panel);
+            font-size: 1.1rem;
+        }
+        #loginInput::placeholder { color: var(--dim); }
+        #loginInput:focus { border-color: var(--lamp); outline: none; }
+
+        #loginBtn {
+            padding: 15px 18px;
+            border: 0;
+            border-radius: 14px;
+            background: var(--lamp);
+            color: var(--night);
+            font-weight: 600;
+            cursor: pointer;
+        }
+        #loginBtn:hover { filter: brightness(1.06); }
+
+        #loginIncognitoBtn {
+            padding: 12px 18px;
+            border: 1px dashed var(--line);
+            border-radius: 14px;
+            background: transparent;
+            color: var(--dim);
+            cursor: pointer;
+        }
+        #loginIncognitoBtn:hover { color: var(--mist); border-color: var(--dim); }
+
+        /* ---------- chat ---------- */
+        #chat {
+            width: min(720px, 100%);
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            background: var(--panel);
+        }
+
+        @media (min-width: 760px) {
+            #chat {
+                height: min(840px, calc(100dvh - 48px));
+                border: 1px solid var(--line);
+                border-radius: 22px;
+                overflow: hidden;
+            }
+        }
+
+        .chat-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--line);
+        }
+
+        .title { display: flex; align-items: center; gap: 10px; }
+
+        .chat-head h2 {
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+        }
+
+        /* connection status dot */
+        #status {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: var(--danger);
+        }
+        #status.online { background: var(--ok); }
+
+        #deleteBtn {
+            padding: 8px 14px;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            background: transparent;
+            color: var(--dim);
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+        #deleteBtn:hover { color: var(--danger); border-color: var(--danger); }
+
+        #messages {
+            flex: 1;
+            margin: 0;
+            padding: 20px;
+            list-style: none;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        #messages li {
+            align-self: flex-start;
+            max-width: 82%;
+            padding: 8px 14px 6px;
+            border-radius: 16px 16px 16px 4px;
+            background: var(--night);
+            line-height: 1.4;
+            overflow-wrap: anywhere;
+            animation: pop 0.18s ease-out;
+        }
+
+        #messages li.mine {
+            align-self: flex-end;
+            border-radius: 16px 16px 4px 16px;
+            background: var(--lamp);
+            color: var(--night);
+        }
+
+        #messages li.system {
+            align-self: center;
+            max-width: 100%;
+            padding: 2px 10px;
+            background: transparent;
+            color: var(--dim);
+            font-size: 0.85rem;
+        }
+
+        .who { display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 2px; }
+        .time { display: block; text-align: right; font-size: 0.7rem; opacity: 0.55; margin-top: 2px; }
+
+        @keyframes pop {
+            from { opacity: 0; transform: translateY(6px); }
+            to   { opacity: 1; transform: none; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            #messages li { animation: none; }
+        }
+
+        #messages:empty::before {
+            content: "No messages yet. Say something.";
+            margin: auto;
+            color: var(--dim);
+        }
+
+        #send-msg {
+            display: flex;
+            gap: 10px;
+            padding: 14px 16px;
+            border-top: 1px solid var(--line);
+        }
+
+        #msgInput {
+            flex: 1;
+            min-width: 0;
+            padding: 13px 18px;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            background: var(--night);
+        }
+        #msgInput::placeholder { color: var(--dim); }
+        #msgInput:focus { border-color: var(--lamp); outline: none; }
+
+        #sendBtn {
+            padding: 0 22px;
+            border: 0;
+            border-radius: 999px;
+            background: var(--lamp);
+            color: var(--night);
+            font-weight: 600;
+            cursor: pointer;
+        }
+        #sendBtn:hover { filter: brightness(1.06); }
+    </style>
+</head>
+<body>
+
+    <form id="login">
+        <h1>Who's<br>there?</h1>
+        <p>Pick a nickname, or stay incognito.</p>
+        <input type="text" id="loginInput" placeholder="Nickname" maxlength="20" autocomplete="off">
+        <button type="button" id="loginBtn">Log in</button>
+        <button type="button" id="loginIncognitoBtn">Stay incognito</button>
+    </form>
+
+    <main id="chat" hidden>
+        <header class="chat-head">
+            <div class="title">
+                <h2>Chat</h2>
+                <span id="status" title="Connection"></span>
+            </div>
+            <button type="button" id="deleteBtn">Clear chat</button>
+        </header>
+
+        <ul id="messages"></ul>
+
+        <form id="send-msg">
+            <input type="text" id="msgInput" placeholder="Message" autocomplete="off">
+            <button id="sendBtn" type="submit">Send</button>
+        </form>
+    </main>
+
+    <script>
+        let ws;
+        let myName;
+        let unread = 0;
+
+        const list = document.getElementById("messages");
+        const statusDot = document.getElementById("status");
+
+        // stable color for each nickname
+        function nickColor(nick) {
+            let h = 0;
+            for (const ch of nick) {
+                h = (h * 31 + ch.charCodeAt(0)) % 360;
+            }
+            return "hsl(" + h + ", 70%, 72%)";
+        }
+
+        function addSystem(text) {
+            const li = document.createElement("li");
+            li.classList.add("system");
+            li.textContent = text;
+            list.appendChild(li);
+            list.scrollTop = list.scrollHeight;
+        }
+
+        function addMessage(data) {
+            // server sends "nick | text"
+            const sep = data.indexOf(" | ");
+            const nick = sep === -1 ? "" : data.slice(0, sep);
+            const text = sep === -1 ? data : data.slice(sep + 3);
+            const mine = nick === myName;
+
+            const li = document.createElement("li");
+            if (mine) li.classList.add("mine");
+
+            if (!mine && nick) {
+                const who = document.createElement("span");
+                who.className = "who";
+                who.textContent = nick;
+                who.style.color = nickColor(nick);
+                li.appendChild(who);
+            }
+
+            const body = document.createElement("span");
+            body.textContent = text;
+            li.appendChild(body);
+
+            const time = document.createElement("span");
+            time.className = "time";
+            time.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+            li.appendChild(time);
+
+            list.appendChild(li);
+            list.scrollTop = list.scrollHeight;
+
+            // unread counter in the tab title
+            if (document.hidden && !mine) {
+                unread++;
+                document.title = "(" + unread + ") Chat";
+            }
+        }
+
+        document.addEventListener("visibilitychange", function() {
+            if (!document.hidden) {
+                unread = 0;
+                document.title = "Chat";
+            }
+        });
+
+        function connect(name) {
+            const proto = location.protocol === "https:" ? "wss://" : "ws://";
+
+            myName = name.trim();
+            if (myName === "") {
+                myName = "incognito";
+            }
+
+            ws = new WebSocket(proto + location.host + "/ws" + "?name=" + encodeURIComponent(myName));
+
+            ws.onopen = function() {
+                statusDot.classList.add("online");
+            };
+
+            ws.onclose = function() {
+                statusDot.classList.remove("online");
+                addSystem("Connection lost. Refresh the page to reconnect.");
+            };
+
+            ws.onmessage = function(e) {
+                if (e.data === "CMD:show_confirm") {
+                    if (confirm("Удалить весь чат?")) {
+                        ws.send("CMD:confirm_yes");
                     }
-                    
-                    if (e.data === "CMD:cleared") {
-                            document.getElementById("messages").innerHTML = ""
-                    }
-                };
-
-                document.getElementById("deleteBtn").onclick = function() {
-                    ws.send("CMD:show_confirm")
+                } else if (e.data === "CMD:cleared") {
+                    list.innerHTML = "";
+                    addSystem("Chat cleared");
+                } else if (!e.data.startsWith("CMD:")) {
+                    addMessage(e.data);
                 }
+            };
 
-                document.getElementById("send-msg").addEventListener("submit", function(e) {
-                    e.preventDefault();
-                    const input = document.getElementById("msgInput");
-                    ws.send(input.value);
-                    input.value = "";
-                });
-            </script>
-        </body>
+            document.getElementById("login").hidden = true;
+            document.getElementById("chat").hidden = false;
+            document.getElementById("msgInput").focus();
+        }
+
+        document.getElementById("deleteBtn").onclick = function() {
+            ws.send("CMD:show_confirm");
+        };
+
+        document.getElementById("send-msg").addEventListener("submit", function(e) {
+            e.preventDefault();
+            const input = document.getElementById("msgInput");
+            if (input.value.trim() === "") return;
+            ws.send(input.value);
+            input.value = "";
+        });
+
+        document.getElementById("loginBtn").onclick = function() {
+            connect(document.getElementById("loginInput").value);
+        };
+
+        document.getElementById("loginIncognitoBtn").onclick = function() {
+            connect("incognito");
+        };
+
+        // Enter in the nickname field = Log in
+        document.getElementById("loginInput").addEventListener("keydown", function(e) {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                document.getElementById("loginBtn").click();
+            }
+        });
+    </script>
+</body>
 </html>

@@ -12,8 +12,6 @@ import (
 )
 
 func WSHandler(h *hub.Hub) func(w http.ResponseWriter, r *http.Request) {
-	var userCount = 0
-
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Println("кто-то пытается подключиться")
 		conn, err := websocket.Accept(w, r, nil)
@@ -24,10 +22,13 @@ func WSHandler(h *hub.Hub) func(w http.ResponseWriter, r *http.Request) {
 
 		send := make(chan string, 5)
 
+		name := r.URL.Query().Get("name")
+		if name == "" {
+			name = "incognito"
+		}
+
 		h.ClientsMu.Lock()
 		h.Clients = append(h.Clients, send)
-		userCount++
-		name := fmt.Sprintf("user%d", userCount)
 		h.ClientsMu.Unlock()
 
 		go func() {
