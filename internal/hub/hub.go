@@ -1,6 +1,8 @@
 package hub
 
 import (
+	"chat/internal/store"
+
 	"fmt"
 	"log"
 	"sync"
@@ -11,13 +13,15 @@ type Hub struct {
 	clientsMu     sync.Mutex
 	broadcast     chan Message
 	confirmations map[*Client]struct{}
+	store         *store.Store
 }
 
-func NewHub() *Hub {
+func NewHub(st *store.Store) *Hub {
 	return &Hub{
 		clients:       make(map[*Client]struct{}),
 		confirmations: make(map[*Client]struct{}),
 		broadcast:     make(chan Message),
+		store:         st,
 	}
 }
 
@@ -28,7 +32,17 @@ func (h *Hub) Broadcast(msg Message) {
 func (h *Hub) AddClient(name string) *Client {
 	client := &Client{
 		Name: name,
-		Send: make(chan string, 5),
+		Send: make(chan string, 256),
+	}
+
+	rows, err := h.store.LastMessages(10)
+
+	if err != nil {
+		log.Println("не удалось загрузить историю", err)
+	} else {
+		for _, row := range rows {
+			client.Send <- fmt.Sprintf("%s | %s", row.Author, row.Text)
+		}
 	}
 
 	h.clientsMu.Lock()
@@ -47,7 +61,7 @@ func (h *Hub) RemoveClient(client *Client) {
 	delete(h.clients, client)
 	delete(h.confirmations, client)
 
-	h.broadcastToAll("CMD:user_left:" + client.Name)
+	h.broadcastToAllLocked("CMD:user_left:" + client.Name)
 
 	close(client.Send)
 }
@@ -63,9 +77,12 @@ func (h *Hub) Run() {
 			h.broadcastToAll("CMD:show_confirm")
 
 		default:
-			h.broadcastToAll(
-				fmt.Sprintf("%s | %s", msg.Client.Name, msg.Text),
-			)
+			row, err := h.store.SaveMessage(msg.Client.Name, msg.Text)
+			if err != nil {
+				log.Println("не удалось сохранить сообщение:", err)
+				continue
+			}
+			h.broadcastToAll(fmt.Sprintf("%s | %s", row.Author, row.Text))
 		}
 	}
 }
