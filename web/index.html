@@ -109,6 +109,7 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
+            gap: 12px;
             padding: 16px 20px;
             border-bottom: 1px solid var(--line);
         }
@@ -120,6 +121,12 @@
             font-size: 1.25rem;
             font-weight: 800;
             letter-spacing: -0.02em;
+        }
+
+        #onlineCount {
+            margin-left: auto;
+            color: var(--dim);
+            font-size: 0.85rem;
         }
 
         /* connection status dot */
@@ -151,14 +158,6 @@
             display: flex;
             flex-direction: column;
             gap: 8px;
-        }
-
-        .system-message {
-            text-align: center;
-            color: #ffffff;
-            font-size: 14px;
-            margin: 18px 0;
-            opacity: 0.9;
         }
 
         #messages li {
@@ -252,6 +251,7 @@
                 <span id="status" title="Connection"></span>
             </div>
             <button type="button" id="deleteBtn">Clear chat</button>
+            <span id="onlineCount"></span>
         </header>
 
         <ul id="messages"></ul>
@@ -269,6 +269,7 @@
 
         const list = document.getElementById("messages");
         const statusDot = document.getElementById("status");
+        const onlineCount = document.getElementById("onlineCount");
 
         // stable color for each nickname
         function nickColor(nick) {
@@ -324,13 +325,6 @@
             }
         }
 
-        function addSystemMessage(text) {
-            const message = document.createElement("div");
-            message.className = "system-message";
-            message.textContent = text;
-            message.appendChild(message);
-        }
-
         document.addEventListener("visibilitychange", function() {
             if (!document.hidden) {
                 unread = 0;
@@ -358,29 +352,30 @@
             };
 
             ws.onmessage = function(e) {
-                if (e.data.startsWith("CMD:user_joined:")) {
-                    const name = e.data.substring("CMD:user_joined:".length);
-                    addSystem(`Пользователь ${name} присоединился`);
-                } 
-                
-                else if (e.data.startsWith("CMD:user_left:")) {
-                    const name = e.data.substring("CMD:user_left:".length);
-                    addSystem(`Пользователь ${name} покинул чат`);
+                const data = e.data;
+
+                if (data.startsWith("CMD:online:")) {
+                    const raw = data.slice("CMD:online:".length);
+                    const names = raw === "" ? [] : raw.split(",");
+
+                    onlineCount.textContent = "Онлайн: " + names.length;
+                    onlineCount.title = names.join(", ");
+                    return;
                 }
 
-                else if (e.data === "CMD:show_confirm") {
+                if (data.startsWith("CMD:user_joined:")) {
+                    addSystem("Пользователь " + data.slice("CMD:user_joined:".length) + " присоединился");
+                } else if (data.startsWith("CMD:user_left:")) {
+                    addSystem("Пользователь " + data.slice("CMD:user_left:".length) + " покинул чат");
+                } else if (data === "CMD:show_confirm") {
                     if (confirm("Удалить весь чат?")) {
                         ws.send("CMD:confirm_yes");
                     }
-                } 
-                
-                else if (e.data === "CMD:cleared") {
+                } else if (data === "CMD:cleared") {
                     list.innerHTML = "";
                     addSystem("Chat cleared");
-                } 
-                
-                else if (!e.data.startsWith("CMD:")) {
-                    addMessage(e.data);
+                } else if (!data.startsWith("CMD:")) {
+                    addMessage(data);
                 }
             };
 
@@ -416,8 +411,6 @@
                 document.getElementById("loginBtn").click();
             }
         });
-
-
     </script>
 </body>
 </html>

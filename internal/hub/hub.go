@@ -2,6 +2,7 @@ package hub
 
 import (
 	"chat/internal/store"
+	"strings"
 
 	"fmt"
 	"log"
@@ -47,9 +48,11 @@ func (h *Hub) AddClient(name string) *Client {
 
 	h.clientsMu.Lock()
 	h.clients[client] = struct{}{}
+	names := h.onlineNamesLocked()
 	h.clientsMu.Unlock()
 
 	h.broadcastToAll("CMD:user_joined:" + name)
+	h.broadcastToAll("CMD:online:" + strings.Join(names, ","))
 
 	return client
 }
@@ -62,6 +65,7 @@ func (h *Hub) RemoveClient(client *Client) {
 	delete(h.confirmations, client)
 
 	h.broadcastToAllLocked("CMD:user_left:" + client.Name)
+	h.broadcastToAllLocked("CMD:online:" + strings.Join(h.onlineNamesLocked(), " "))
 
 	close(client.Send)
 }
@@ -117,4 +121,21 @@ func (h *Hub) handleConfirmation(client *Client) {
 	clear(h.confirmations)
 
 	h.broadcastToAllLocked("CMD:cleared")
+}
+
+func (h *Hub) onlineNames() []string {
+	h.clientsMu.Lock()
+	defer h.clientsMu.Unlock()
+
+	return h.onlineNamesLocked()
+}
+
+func (h *Hub) onlineNamesLocked() []string {
+	allClients := []string{}
+
+	for c := range h.clients {
+		allClients = append(allClients, c.Name)
+	}
+
+	return allClients
 }

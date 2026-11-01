@@ -23,4 +23,5 @@ __debug_bin*
 
 # Системные файлы
 .DS_Store
-Thumbs.db
+Thumbs.dbpass.env 
+pass.env 

@@ -32,7 +32,7 @@ func main() {
 	mux.HandleFunc("/ws", handlers.WSHandler(h))
 	mux.HandleFunc("/home", handlers.HomeHandler)
 
-	err = server.RunServer(":8081", mux)
+	err = server.RunServer(":8090", mux)
 	if err != nil {
 		log.Fatal(err)
 	}
