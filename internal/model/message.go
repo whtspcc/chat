@@ -3,8 +3,9 @@ package model
 import "time"
 
 type Message struct {
-	ID        int       `json:"id"`
-	Author    string    `json:"author"`
-	Text      string    `json:"text"`
-	Timestamp time.Time `json:"timestamp"`
+	ID        int
+	Author    string
+	Text      string
+	Timestamp time.Time
+	Client    *Client
 }

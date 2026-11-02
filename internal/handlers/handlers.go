@@ -3,11 +3,29 @@ package handlers
 import (
 	"log"
 	"net/http"
+	"strings"
+	"unicode/utf8"
 
 	"chat/internal/hub"
+	"chat/internal/model"
 
 	"github.com/coder/websocket"
 )
+
+const maxNameLen = 20
+
+func validate(name, roomName string) string {
+	if utf8.RuneCountInString(name) > maxNameLen {
+		return "ник не длиннее 20 символов"
+	}
+	if strings.Contains(name, ",") {
+		return "в нике нельзя использовать запятую"
+	}
+	if strings.Contains(roomName, ",") {
+		return "некорректное имя комнаты"
+	}
+	return ""
+}
 
 func WSHandler(h *hub.Hub) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -19,21 +37,38 @@ func WSHandler(h *hub.Hub) func(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		name := r.URL.Query().Get("name")
+		name := strings.TrimSpace(r.URL.Query().Get("name"))
 		if name == "" {
 			name = "incognito"
 		}
 
-		client := h.AddClient(name)
+		roomName := strings.TrimSpace(r.URL.Query().Get("room"))
+		if roomName == "" {
+			roomName = "general"
+		}
+
+		if msgErr := validate(name, roomName); msgErr != "" {
+			log.Println("отклонено:", msgErr)
+			conn.Write(r.Context(), websocket.MessageText, []byte("ОШИБКА: "+msgErr))
+			conn.Close(websocket.StatusPolicyViolation, msgErr)
+			return
+		}
+
+		log.Printf("подключение: name=%s room=%s", name, roomName)
+
+		client, err := h.AddClient(name, roomName)
+		if err != nil {
+			log.Println("не удалось добавить клиента:", err)
+			conn.Close(websocket.StatusPolicyViolation, "комната не найдена")
+			return
+		}
 		defer h.RemoveClient(client)
 
 		go func() {
 			for msg := range client.Send {
-				err := conn.Write(r.Context(), websocket.MessageText, []byte(msg))
-				if err != nil {
+				if err := conn.Write(r.Context(), websocket.MessageText, []byte(msg)); err != nil {
 					log.Println("ошибка Write:", err)
 				}
-
 			}
 		}()
 
@@ -44,15 +79,14 @@ func WSHandler(h *hub.Hub) func(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			text := string(msg)
-
-			h.Broadcast(hub.Message{
+			h.Broadcast(model.Message{
 				Client: client,
-				Text:   text,
+				Text:   string(msg),
 			})
 		}
 	}
 }
+
 func HomeHandler(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, "web/index.html")
 }

@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"chat/internal/model"
 	"chat/internal/store"
 	"strings"
 
@@ -10,33 +11,56 @@ import (
 )
 
 type Hub struct {
-	clients       map[*Client]struct{}
-	clientsMu     sync.Mutex
-	broadcast     chan Message
-	confirmations map[*Client]struct{}
+	clientsMu sync.Mutex
+
+	broadcast     chan model.Message
+	confirmations map[*model.Client]struct{}
 	store         *store.Store
+
+	rooms map[string]*Room
+}
+
+type Room struct {
+	id      int
+	clients map[*model.Client]struct{}
 }
 
 func NewHub(st *store.Store) *Hub {
 	return &Hub{
-		clients:       make(map[*Client]struct{}),
-		confirmations: make(map[*Client]struct{}),
-		broadcast:     make(chan Message),
+		rooms:         make(map[string]*Room),
+		confirmations: make(map[*model.Client]struct{}),
+		broadcast:     make(chan model.Message),
 		store:         st,
 	}
 }
 
-func (h *Hub) Broadcast(msg Message) {
+func (h *Hub) Broadcast(msg model.Message) {
 	h.broadcast <- msg
 }
 
-func (h *Hub) AddClient(name string) *Client {
-	client := &Client{
+func (h *Hub) AddClient(name, roomName string) (*model.Client, error) {
+	client := &model.Client{
 		Name: name,
 		Send: make(chan string, 256),
 	}
 
-	rows, err := h.store.LastMessages(10)
+	roomID, err := h.store.RoomID(roomName)
+	if err != nil {
+		return nil, fmt.Errorf("комната %q не найдена: %w", roomName, err)
+	}
+
+	h.clientsMu.Lock()
+	room, ok := h.rooms[roomName]
+	if !ok {
+		room = &Room{id: roomID, clients: make(map[*model.Client]struct{})}
+		h.rooms[roomName] = room
+	}
+	room.clients[client] = struct{}{}
+	client.Room = roomName
+	names := h.onlineNamesLocked(room)
+	h.clientsMu.Unlock()
+
+	rows, err := h.store.LastMessages(roomID, 10)
 
 	if err != nil {
 		log.Println("не удалось загрузить историю", err)
@@ -45,27 +69,31 @@ func (h *Hub) AddClient(name string) *Client {
 			client.Send <- fmt.Sprintf("%s | %s", row.Author, row.Text)
 		}
 	}
+	h.broadcastToRoom(room, "CMD:user_joined:"+name)
+	h.broadcastToRoom(room, "CMD:online:"+strings.Join(names, ","))
 
-	h.clientsMu.Lock()
-	h.clients[client] = struct{}{}
-	names := h.onlineNamesLocked()
-	h.clientsMu.Unlock()
-
-	h.broadcastToAll("CMD:user_joined:" + name)
-	h.broadcastToAll("CMD:online:" + strings.Join(names, ","))
-
-	return client
+	return client, nil
 }
 
-func (h *Hub) RemoveClient(client *Client) {
+func (h *Hub) RemoveClient(client *model.Client) {
 	h.clientsMu.Lock()
-	defer h.clientsMu.Unlock()
 
-	delete(h.clients, client)
+	room, ok := h.rooms[client.Room]
+	if ok {
+		delete(room.clients, client)
+	}
 	delete(h.confirmations, client)
 
-	h.broadcastToAllLocked("CMD:user_left:" + client.Name)
-	h.broadcastToAllLocked("CMD:online:" + strings.Join(h.onlineNamesLocked(), " "))
+	var online []string
+	if ok {
+		online = h.onlineNamesLocked(room)
+	}
+	h.clientsMu.Unlock()
+
+	if ok {
+		h.broadcastToRoom(room, "CMD:user_left:"+client.Name)
+		h.broadcastToRoom(room, "CMD:online:"+strings.Join(online, ","))
+	}
 
 	close(client.Send)
 }
@@ -78,28 +106,32 @@ func (h *Hub) Run() {
 			h.handleConfirmation(msg.Client)
 
 		case "CMD:show_confirm":
-			h.broadcastToAll("CMD:show_confirm")
+			room, ok := h.rooms[msg.Client.Room]
+			if ok {
+				h.broadcastToRoom(room, "CMD:show_confirm")
+			}
 
 		default:
-			row, err := h.store.SaveMessage(msg.Client.Name, msg.Text)
-			if err != nil {
-				log.Println("не удалось сохранить сообщение:", err)
+			room, ok := h.rooms[msg.Client.Room]
+			if !ok {
+				log.Println("комната не найдена:", msg.Client.Room)
 				continue
 			}
-			h.broadcastToAll(fmt.Sprintf("%s | %s", row.Author, row.Text))
+			row, err := h.store.SaveMessage(msg.Client.Name, msg.Text, room.id)
+			if err != nil {
+				log.Println("не удалось сохранить сообщение: ", err)
+				continue
+			}
+			h.broadcastToRoom(room, fmt.Sprintf("%s | %s", row.Author, row.Text))
 		}
 	}
 }
 
-func (h *Hub) broadcastToAll(msg string) {
+func (h *Hub) broadcastToRoom(room *Room, msg string) {
 	h.clientsMu.Lock()
 	defer h.clientsMu.Unlock()
 
-	h.broadcastToAllLocked(msg)
-}
-
-func (h *Hub) broadcastToAllLocked(msg string) {
-	for client := range h.clients {
+	for client := range room.clients {
 		select {
 		case client.Send <- msg:
 		default:
@@ -108,34 +140,32 @@ func (h *Hub) broadcastToAllLocked(msg string) {
 	}
 }
 
-func (h *Hub) handleConfirmation(client *Client) {
+func (h *Hub) handleConfirmation(client *model.Client) {
 	h.clientsMu.Lock()
-	defer h.clientsMu.Unlock()
+
+	room, ok := h.rooms[client.Room]
+	if !ok {
+		h.clientsMu.Unlock()
+		return
+	}
 
 	h.confirmations[client] = struct{}{}
 
-	if len(h.confirmations) != len(h.clients) {
+	if len(h.confirmations) != len(room.clients) {
+		h.clientsMu.Unlock()
 		return
 	}
 
 	clear(h.confirmations)
+	h.clientsMu.Unlock()
 
-	h.broadcastToAllLocked("CMD:cleared")
+	h.broadcastToRoom(room, "CMD:cleared")
 }
 
-func (h *Hub) onlineNames() []string {
-	h.clientsMu.Lock()
-	defer h.clientsMu.Unlock()
-
-	return h.onlineNamesLocked()
-}
-
-func (h *Hub) onlineNamesLocked() []string {
-	allClients := []string{}
-
-	for c := range h.clients {
-		allClients = append(allClients, c.Name)
+func (h *Hub) onlineNamesLocked(room *Room) []string {
+	names := []string{}
+	for c := range room.clients {
+		names = append(names, c.Name)
 	}
-
-	return allClients
+	return names
 }
