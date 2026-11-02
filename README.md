@@ -19,7 +19,7 @@
 - Адаптивный интерфейс
 
 ## Структура проекта
-
+```
 chat/
 ├── internal/
 │ ├── handlers/ # HTTP и WebSocket обработчики
@@ -35,7 +35,7 @@ chat/
 ├── main.go
 ├── go.mod
 └── README.md
-
+```
 
 ## Требования
 
