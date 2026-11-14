@@ -29,8 +29,11 @@ func main() {
 	go h.Run()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/ws", handlers.WSHandler(h))
+	mux.HandleFunc("/ws", handlers.WSHandler(h, st))
 	mux.HandleFunc("/home", handlers.HomeHandler)
+	mux.HandleFunc("/register", handlers.RegisterHandler(st))
+	mux.HandleFunc("/login", handlers.LoginHandler(st))
+	mux.Handle("/web/", http.StripPrefix("/web/", http.FileServer(http.Dir("web"))))
 
 	err = server.RunServer(":8090", mux)
 	if err != nil {

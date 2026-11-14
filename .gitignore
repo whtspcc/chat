@@ -25,3 +25,11 @@ __debug_bin*
 .DS_Store
 Thumbs.dbpass.env 
 pass.env 
+
+# curl-cookies и сессии
+cookies.txt
+*.cookies
+
+# SQLTools
+*.session.sql
+.vscode/settings.json
