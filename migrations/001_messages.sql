@@ -4,9 +4,3 @@ CREATE TABLE IF NOT EXISTS messages (
     text TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
-ALTER TABLE messages
-    ADD CONSTRAINT messages_room_fk
-    FOREIGN KEY (room_id) REFERENCES rooms(id);
-
-SELECT * FROM messages;

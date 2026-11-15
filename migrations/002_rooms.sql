@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS rooms (
 
 INSERT INTO rooms (name)
 VALUES ('general')
-ON CONFLICT (NAME) DO NOTHING;
+ON CONFLICT (name) DO NOTHING;
 
 ALTER TABLE messages
     ADD COLUMN IF NOT EXISTS room_id INT;
@@ -20,7 +20,3 @@ ALTER TABLE messages
 ALTER TABLE messages
     ADD CONSTRAINT messages_room_fk
     FOREIGN KEY (room_id) REFERENCES rooms(id);
-
-SELECT id, name FROM rooms;
-SELECT count(*) FROM messages WHERE room_id IS NULL;
-SELECT conname FROM pg_constraint WHERE conname = 'messages_room_fk';
