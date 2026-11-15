@@ -1,0 +1,38 @@
+# Скомпилированные бинарники
+/chat
+/chat.exe
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Debug-бинарники и тесты
+__debug_bin*
+*.test
+*.out
+
+# Переменные окружения и секреты
+.env
+pass.env
+
+# IDE
+.vscode/
+.idea/
+
+# Системные файлы
+.DS_Store
+Thumbs.db
+
+# curl-cookies и сессии
+cookies.txt
+*.cookies
+
+# SQLTools
+*.session.sql
+
+# Git и сам Docker-конфиг
+.git
+.gitignore
+Dockerfile
+.dockerignore
