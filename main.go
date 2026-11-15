@@ -34,6 +34,13 @@ func main() {
 	mux.HandleFunc("/register", handlers.RegisterHandler(st))
 	mux.HandleFunc("/login", handlers.LoginHandler(st))
 	mux.Handle("/web/", http.StripPrefix("/web/", http.FileServer(http.Dir("web"))))
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		http.Redirect(w, r, "/home", http.StatusFound)
+	})
 
 	err = server.RunServer(":8090", mux)
 	if err != nil {

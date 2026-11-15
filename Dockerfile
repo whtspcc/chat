@@ -9,5 +9,5 @@ FROM alpine:3.20
 WORKDIR /app
 COPY --from=build /app/chat ./chat
 COPY web/ ./web/
-EXPOSE 8080
+EXPOSE 8090
 CMD ["./chat"]
